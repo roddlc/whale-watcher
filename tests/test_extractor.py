@@ -176,7 +176,18 @@ class TestExtractNewFilings:
 
         # Mock database session
         mock_session = Mock()
-        mock_session.query.return_value.filter.return_value.first.return_value = None  # No existing filer
+        mock_filer = Mock()
+        mock_filer.id = 1
+        # First call to query (in get_or_create_filer) - no existing filer
+        # Second call to query (in get_existing_accession_numbers) - empty filings
+        mock_session.query.return_value.filter.return_value.first.return_value = None
+        mock_session.query.return_value.filter.return_value.all.return_value = []
+
+        # After filer is created, it should have an ID
+        def add_side_effect(obj):
+            obj.id = 1
+        mock_session.add.side_effect = add_side_effect
+
         mock_db.session_scope.return_value.__enter__.return_value = mock_session
 
         extract_new_filings(
@@ -443,19 +454,20 @@ class TestDownloadAndStoreFilingMetadata:
         self,
         mock_client_class: Mock,
         mock_config: Mock,
-        db_session,
         db_connection
     ) -> None:
         """Test creates Filing record with correct fields (integration with real DB)."""
-        # Create real filer first
-        filer = Filer(
-            cik="0001067983",
-            name="Berkshire Hathaway",
-            category="value_investing",
-            enabled=True
-        )
-        db_session.add(filer)
-        db_session.commit()
+        # Create real filer first using db_connection
+        with db_connection.session_scope() as session:
+            filer = Filer(
+                cik="0001067983",
+                name="Berkshire Hathaway",
+                category="value_investing",
+                enabled=True
+            )
+            session.add(filer)
+            session.flush()
+            filer_id = filer.id
 
         # Mock SEC client
         mock_client = Mock()
@@ -479,15 +491,16 @@ class TestDownloadAndStoreFilingMetadata:
         )
 
         # Verify filing was created correctly
-        filing = db_session.query(Filing).filter(Filing.id == filing_id).first()
-        assert filing is not None
-        assert filing.filer_id == filer.id
-        assert filing.accession_number == "0001067983-25-000005"
-        assert filing.filing_date == date(2025, 2, 14)
-        assert filing.period_of_report == date(2024, 12, 31)
-        assert filing.processed is False
-        assert filing.total_value is None  # Phase 2: not set yet
-        assert filing.holdings_count is None  # Phase 2: not set yet
+        with db_connection.session_scope() as session:
+            filing = session.query(Filing).filter(Filing.id == filing_id).first()
+            assert filing is not None
+            assert filing.filer_id == filer_id
+            assert filing.accession_number == "0001067983-25-000005"
+            assert filing.filing_date == date(2025, 2, 14)
+            assert filing.period_of_report == date(2024, 12, 31)
+            assert filing.processed is False
+            assert filing.total_value is None  # Phase 2: not set yet
+            assert filing.holdings_count is None  # Phase 2: not set yet
 
 
 @pytest.fixture
@@ -503,5 +516,14 @@ def mock_config() -> Mock:
 
 @pytest.fixture
 def mock_db() -> Mock:
-    """Mock database connection."""
-    return Mock()
+    """Mock database connection with context manager support.
+
+    MagicMock is needed instead of Mock because our code uses:
+        with db.session_scope() as session:
+
+    This requires __enter__ and __exit__ magic methods which regular Mock
+    doesn't support. MagicMock automatically provides these magic methods.
+    """
+    from unittest.mock import MagicMock
+    db = MagicMock()
+    return db
