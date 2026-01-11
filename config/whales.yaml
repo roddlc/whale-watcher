@@ -1,0 +1,42 @@
+user_agent: "WhaleWatcher/1.0 (parade.gazebos.4g@icloud.com)"
+
+rate_limit:
+  requests_per_second: 5
+  max_retries: 3
+
+date_range:
+  start_year: 2025
+  end_year: 2025
+
+whales:
+  - name: "Berkshire Hathaway"
+    cik: "0001067983"
+    description: "Warren Buffett's investment vehicle"
+    category: "value_investing"
+    enabled: true
+
+  - name: "Bridgewater Associates"
+    cik: "0001350694"
+    description: "Ray Dalio's hedge fund"
+    category: "macro_hedge_fund"
+    enabled: true
+
+  - name: "ARK Invest"
+    cik: "0001579982"
+    description: "Cathie Wood's innovation-focused fund"
+    category: "growth_investing"
+    enabled: true
+
+  - name: "Renaissance Technologies"
+    cik: "0001037389"
+    description: "Jim Simons' quantitative hedge fund"
+    category: "quant_hedge_fund"
+    enabled: true
+
+# local database for now (user and password will be changed accordingly)
+database:
+  host: "localhost"
+  port: 5432
+  name: "whale_watcher"
+  user: "admin"
+  password: "password"
