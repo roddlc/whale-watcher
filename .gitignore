@@ -9,5 +9,6 @@ wheels/
 # Virtual environments
 .venv
 
-# AI output
+# AI tools
 *plan*
+Claude.md
