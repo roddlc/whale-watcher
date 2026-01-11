@@ -1,7 +1,7 @@
 [project]
 name = "whale-watcher"
 version = "0.1.0"
-description = "Add your description here"
+description = "Proof of concept for tracking institutional investor activity"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
