@@ -6,6 +6,11 @@ from typing import Generator
 
 import pytest
 import yaml
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+
+from whale_watcher.database.models import Base
+from whale_watcher.database.connection import DatabaseConnection
 
 
 @pytest.fixture
@@ -70,3 +75,35 @@ def empty_config_file() -> Generator[Path, None, None]:
 
     # Cleanup
     temp_path.unlink()
+
+
+@pytest.fixture
+def db_engine() -> Generator:
+    """Create an in-memory SQLite database engine for testing."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    yield engine
+    Base.metadata.drop_all(engine)
+    engine.dispose()
+
+
+@pytest.fixture
+def db_session(db_engine) -> Generator[Session, None, None]:
+    """Create a database session for testing."""
+    SessionLocal = sessionmaker(bind=db_engine)
+    session = SessionLocal()
+    yield session
+    session.close()
+
+
+@pytest.fixture
+def db_connection(db_engine) -> Generator[DatabaseConnection, None, None]:
+    """Create a DatabaseConnection instance for testing."""
+    # Create a connection using the in-memory engine
+    # We need to use the same engine URL
+    db = DatabaseConnection("sqlite:///:memory:")
+    # Replace the engine with our test engine to share the same in-memory DB
+    db.engine = db_engine
+    db.SessionLocal.configure(bind=db_engine)
+    yield db
+    db.close()
