@@ -147,13 +147,14 @@ class TestSECEdgarClient:
             'filings': {
                 'recent': {
                     'accessionNumber': ['0001-25-001', '0001-25-002', '0001-25-003'],
-                    'filingDate': ['2025-02-14', '2025-02-13', '2025-01-15'],
-                    'reportDate': ['2024-12-31', '2024-12-31', '2024-09-30'],
+                    'filingDate': ['2025-02-14', '2025-05-14', '2025-08-14'],
+                    'reportDate': ['2025-03-31', '2025-03-31', '2025-06-30'],
                     'primaryDocument': ['doc1.xml', 'doc2.xml', 'doc3.xml'],
                     'form': ['13F-HR', '10-K', '13F-HR']  # Mixed forms
                 }
             }
         }
+        mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
         result = client.get_13f_filings("1067983")
@@ -188,6 +189,7 @@ class TestSECEdgarClient:
                 }
             }
         }
+        mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
         result = client.get_13f_filings("1067983")
@@ -219,6 +221,7 @@ class TestSECEdgarClient:
                 }
             }
         }
+        mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
         # Override with custom years
@@ -245,12 +248,13 @@ class TestSECEdgarClient:
                 'recent': {
                     'accessionNumber': ['0001067983-25-000005'],
                     'filingDate': ['2025-02-14'],
-                    'reportDate': ['2024-12-31'],
+                    'reportDate': ['2025-03-31'],
                     'primaryDocument': ['form13fInfoTable.xml'],
                     'form': ['13F-HR']
                 }
             }
         }
+        mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
         result = client.get_13f_filings("1067983")
@@ -260,7 +264,7 @@ class TestSECEdgarClient:
         assert isinstance(filing, FilingMetadata)
         assert filing.accession_number == '0001067983-25-000005'
         assert filing.filing_date == date(2025, 2, 14)
-        assert filing.report_date == date(2024, 12, 31)
+        assert filing.report_date == date(2025, 3, 31)
         assert filing.primary_document == 'form13fInfoTable.xml'
         assert filing.form_type == '13F-HR'
 
@@ -354,6 +358,7 @@ class TestSECEdgarClient:
                 }
             }
         }
+        mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
         result = client.get_13f_filings("1067983")
