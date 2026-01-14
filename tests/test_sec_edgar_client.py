@@ -364,3 +364,123 @@ class TestSECEdgarClient:
         result = client.get_13f_filings("1067983")
 
         assert result == []
+
+    @patch('whale_watcher.clients.sec_edgar.requests.Session.get')
+    def test_get_filing_documents_returns_document_list(
+        self,
+        mock_get: Mock,
+        mock_config: Mock
+    ) -> None:
+        """Test get_filing_documents returns list of documents in a filing."""
+        client = SECEdgarClient(mock_config)
+
+        # Mock index page HTML response
+        mock_response = Mock()
+        mock_response.text = '''
+        <html>
+        <a href="/Archives/edgar/data/1067983/000095012325005701/primary_doc.xml">primary_doc.xml</a>
+        <a href="/Archives/edgar/data/1067983/000095012325005701/form13fInfoTable.xml">form13fInfoTable.xml</a>
+        </html>
+        '''
+        mock_get.return_value = mock_response
+
+        result = client.get_filing_documents("0001067983", "0000950123-25-005701")
+
+        assert "primary_doc.xml" in result
+        assert "form13fInfoTable.xml" in result
+
+    @patch('whale_watcher.clients.sec_edgar.requests.Session.get')
+    def test_find_info_table_document_finds_correct_file(
+        self,
+        mock_get: Mock,
+        mock_config: Mock
+    ) -> None:
+        """Test find_info_table_document identifies the info table XML."""
+        client = SECEdgarClient(mock_config)
+
+        # Mock index page HTML response
+        mock_response = Mock()
+        mock_response.text = '''
+        <html>
+        <a href="primary_doc.xml">primary_doc.xml</a>
+        <a href="form13fInfoTable.xml">form13fInfoTable.xml</a>
+        <a href="other.xml">other.xml</a>
+        </html>
+        '''
+        mock_get.return_value = mock_response
+
+        result = client.find_info_table_document("0001067983", "0000950123-25-005701")
+
+        assert result == "form13fInfoTable.xml"
+
+    @patch('whale_watcher.clients.sec_edgar.requests.Session.get')
+    def test_find_info_table_document_handles_variations(
+        self,
+        mock_get: Mock,
+        mock_config: Mock
+    ) -> None:
+        """Test find_info_table_document handles naming variations."""
+        client = SECEdgarClient(mock_config)
+
+        # Mock with different naming convention
+        mock_response = Mock()
+        mock_response.text = '''
+        <html>
+        <a href="primary_doc.xml">primary_doc.xml</a>
+        <a href="infotable.xml">infotable.xml</a>
+        </html>
+        '''
+        mock_get.return_value = mock_response
+
+        result = client.find_info_table_document("0001067983", "0000950123-25-005701")
+
+        assert result == "infotable.xml"
+
+    @patch('whale_watcher.clients.sec_edgar.requests.Session.get')
+    def test_find_info_table_document_returns_none_if_not_found(
+        self,
+        mock_get: Mock,
+        mock_config: Mock
+    ) -> None:
+        """Test find_info_table_document returns None if no info table found."""
+        client = SECEdgarClient(mock_config)
+
+        mock_response = Mock()
+        mock_response.text = '''
+        <html>
+        <a href="primary_doc.xml">primary_doc.xml</a>
+        <a href="other.xml">other.xml</a>
+        </html>
+        '''
+        mock_get.return_value = mock_response
+
+        result = client.find_info_table_document("0001067983", "0000950123-25-005701")
+
+        assert result is None
+
+    @patch('whale_watcher.clients.sec_edgar.requests.Session.get')
+    def test_download_info_table_xml_downloads_correct_document(
+        self,
+        mock_get: Mock,
+        mock_config: Mock
+    ) -> None:
+        """Test download_info_table_xml finds and downloads the info table."""
+        client = SECEdgarClient(mock_config)
+
+        # First call returns index page, second returns XML
+        index_response = Mock()
+        index_response.text = '''
+        <html>
+        <a href="form13fInfoTable.xml">form13fInfoTable.xml</a>
+        </html>
+        '''
+
+        xml_response = Mock()
+        xml_response.text = '<informationTable><infoTable></infoTable></informationTable>'
+
+        mock_get.side_effect = [index_response, xml_response]
+
+        result = client.download_info_table_xml("0001067983", "0000950123-25-005701")
+
+        assert "<informationTable>" in result
+        assert mock_get.call_count == 2
