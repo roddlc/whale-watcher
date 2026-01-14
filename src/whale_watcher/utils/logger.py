@@ -26,9 +26,9 @@ def setup_logging(level: int = logging.INFO) -> logging.Logger:
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
 
-    # Create formatter
+    # Create formatter with fixed-width columns
     formatter = logging.Formatter(
-        fmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        fmt='%(asctime)s | %(name)-32s | Line %(lineno)4s | %(levelname)-8s | %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     console_handler.setFormatter(formatter)
