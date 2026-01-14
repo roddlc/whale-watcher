@@ -1,5 +1,6 @@
 """SEC EDGAR API client for fetching 13F filings."""
 
+import re
 import time
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -231,6 +232,111 @@ class SECEdgarClient:
         except requests.Timeout as e:
             self.logger.error(f"Timeout downloading {accession_number}: {e}")
             raise
+
+    def get_filing_documents(self, cik: str, accession_number: str) -> List[str]:
+        """Get list of document filenames in a filing.
+
+        Fetches the filing index page and extracts all document filenames.
+
+        Args:
+            cik: Central Index Key
+            accession_number: Accession number in format "0001234567-22-000123"
+
+        Returns:
+            List of document filenames (e.g., ["primary_doc.xml", "form13fInfoTable.xml"])
+
+        Raises:
+            requests.HTTPError: If index page fetch fails
+        """
+        # Remove dashes from accession number and leading zeros from CIK
+        accession_no_dashes = accession_number.replace('-', '')
+        cik_no_leading_zeros = cik.lstrip('0')
+
+        # Construct index page URL
+        url = (
+            f"{self.ARCHIVES_BASE}/{cik_no_leading_zeros}/"
+            f"{accession_no_dashes}/"
+        )
+
+        self._rate_limit()
+        self.logger.debug(f"Fetching filing documents from {url}")
+
+        try:
+            response = self.session.get(url, timeout=30)
+            response.raise_for_status()
+
+            # Extract all .xml filenames from href attributes
+            # Pattern matches: href="filename.xml" or href="/path/filename.xml"
+            pattern = r'href="(?:[^"]*/)?([\w\-\.]+\.xml)"'
+            documents = re.findall(pattern, response.text, re.IGNORECASE)
+
+            # Remove duplicates while preserving order
+            unique_docs = list(dict.fromkeys(documents))
+
+            self.logger.info(f"Found {len(unique_docs)} documents for {accession_number}")
+            return unique_docs
+
+        except requests.HTTPError as e:
+            self.logger.error(f"HTTP error fetching documents for {accession_number}: {e}")
+            raise
+
+    def find_info_table_document(self, cik: str, accession_number: str) -> Optional[str]:
+        """Find the information table XML document in a filing.
+
+        Searches for common info table filenames like "form13fInfoTable.xml",
+        "infotable.xml", etc.
+
+        Args:
+            cik: Central Index Key
+            accession_number: Accession number
+
+        Returns:
+            Info table filename if found, None otherwise
+        """
+        documents = self.get_filing_documents(cik, accession_number)
+
+        # Common patterns for 13F info table documents
+        info_table_patterns = [
+            r'form13finfotable\.xml',
+            r'infotable\.xml',
+            r'information[_\-]?table\.xml',
+            r'13f[_\-]?info[_\-]?table\.xml',
+        ]
+
+        for doc in documents:
+            doc_lower = doc.lower()
+            for pattern in info_table_patterns:
+                if re.search(pattern, doc_lower):
+                    self.logger.debug(f"Found info table document: {doc}")
+                    return doc
+
+        self.logger.warning(f"No info table document found for {accession_number}")
+        return None
+
+    def download_info_table_xml(self, cik: str, accession_number: str) -> str:
+        """Download the information table XML for a 13F filing.
+
+        Finds and downloads the information table document containing holdings data.
+
+        Args:
+            cik: Central Index Key
+            accession_number: Accession number
+
+        Returns:
+            XML content as string
+
+        Raises:
+            ValueError: If no info table document found
+            requests.HTTPError: If download fails
+        """
+        info_table_doc = self.find_info_table_document(cik, accession_number)
+
+        if info_table_doc is None:
+            raise ValueError(
+                f"No information table document found for filing {accession_number}"
+            )
+
+        return self.download_filing_xml(cik, accession_number, info_table_doc)
 
     def close(self) -> None:
         """Close the requests session and release resources."""
