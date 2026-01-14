@@ -1,6 +1,7 @@
 """Data extraction module for fetching 13F filings from SEC EDGAR."""
 
-from typing import List, Optional, Set
+from pathlib import Path
+from typing import List, Optional, Set, Union
 
 from sqlalchemy.orm import Session
 
@@ -124,7 +125,7 @@ def extract_new_filings(
 
         logger.info(f"Found {len(new_filings)} new filings for {name}")
 
-        # Apply limit if specified (for testing)
+        # Apply limit if specified (for testing). For example, I want to pull just one filing for testing
         if limit is not None and len(new_filings) > limit:
             new_filings = new_filings[:limit]
             logger.info(f"Limited to {limit} filings for testing")
@@ -140,7 +141,8 @@ def download_and_store_filing_metadata(
     name: str,
     filing: FilingMetadata,
     config: Config,
-    db: DatabaseConnection
+    db: DatabaseConnection,
+    save_xml_path: Optional[Union[str, Path]] = None
 ) -> int:
     """Download filing XML and store metadata in database.
 
@@ -154,6 +156,7 @@ def download_and_store_filing_metadata(
         filing: FilingMetadata to download and store
         config: Application configuration
         db: Database connection
+        save_xml_path: Optional path to save XML content for inspection/testing
 
     Returns:
         Filing ID (database primary key) of the stored filing
@@ -175,6 +178,13 @@ def download_and_store_filing_metadata(
             f"Downloaded {len(xml_content)} bytes for "
             f"{filing.accession_number}"
         )
+
+        # Optionally save XML to file for inspection/testing
+        if save_xml_path is not None:
+            xml_path = Path(save_xml_path)
+            xml_path.parent.mkdir(parents=True, exist_ok=True)
+            xml_path.write_text(xml_content)
+            logger.info(f"Saved XML to {xml_path}")
 
         # Store metadata in database
         with db.session_scope() as session:
