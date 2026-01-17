@@ -15,3 +15,5 @@ Claude.md
 
 # file I want on local but not github
 local/
+.vscode/
+scripts/
