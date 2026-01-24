@@ -398,13 +398,33 @@ class TestSECEdgarClient:
         """Test find_info_table_document identifies the info table XML."""
         client = SECEdgarClient(mock_config)
 
-        # Mock index page HTML response
+        # Mock index page HTML response with proper table structure
         mock_response = Mock()
         mock_response.text = '''
         <html>
-        <a href="primary_doc.xml">primary_doc.xml</a>
-        <a href="form13fInfoTable.xml">form13fInfoTable.xml</a>
-        <a href="other.xml">other.xml</a>
+        <table>
+            <tr>
+                <td>1</td>
+                <td>Primary Document</td>
+                <td><a href="primary_doc.xml">primary_doc.xml</a></td>
+                <td>13F-HR</td>
+                <td>100 KB</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>Information Table</td>
+                <td><a href="form13fInfoTable.xml">form13fInfoTable.xml</a></td>
+                <td>INFORMATION TABLE</td>
+                <td>500 KB</td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td>Other Document</td>
+                <td><a href="other.xml">other.xml</a></td>
+                <td>OTHER</td>
+                <td>50 KB</td>
+            </tr>
+        </table>
         </html>
         '''
         mock_get.return_value = mock_response
@@ -426,8 +446,22 @@ class TestSECEdgarClient:
         mock_response = Mock()
         mock_response.text = '''
         <html>
-        <a href="primary_doc.xml">primary_doc.xml</a>
-        <a href="infotable.xml">infotable.xml</a>
+        <table>
+            <tr>
+                <td>1</td>
+                <td>Primary Document</td>
+                <td><a href="primary_doc.xml">primary_doc.xml</a></td>
+                <td>13F-HR</td>
+                <td>100 KB</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>Info Table</td>
+                <td><a href="infotable.xml">infotable.xml</a></td>
+                <td>INFORMATION TABLE</td>
+                <td>500 KB</td>
+            </tr>
+        </table>
         </html>
         '''
         mock_get.return_value = mock_response
@@ -448,8 +482,22 @@ class TestSECEdgarClient:
         mock_response = Mock()
         mock_response.text = '''
         <html>
-        <a href="primary_doc.xml">primary_doc.xml</a>
-        <a href="other.xml">other.xml</a>
+        <table>
+            <tr>
+                <td>1</td>
+                <td>Primary Document</td>
+                <td><a href="primary_doc.xml">primary_doc.xml</a></td>
+                <td>13F-HR</td>
+                <td>100 KB</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>Other Document</td>
+                <td><a href="other.xml">other.xml</a></td>
+                <td>OTHER</td>
+                <td>50 KB</td>
+            </tr>
+        </table>
         </html>
         '''
         mock_get.return_value = mock_response
@@ -471,7 +519,15 @@ class TestSECEdgarClient:
         index_response = Mock()
         index_response.text = '''
         <html>
-        <a href="form13fInfoTable.xml">form13fInfoTable.xml</a>
+        <table>
+            <tr>
+                <td>1</td>
+                <td>Information Table</td>
+                <td><a href="form13fInfoTable.xml">form13fInfoTable.xml</a></td>
+                <td>INFORMATION TABLE</td>
+                <td>500 KB</td>
+            </tr>
+        </table>
         </html>
         '''
 
