@@ -9,6 +9,7 @@ from whale_watcher.clients.sec_edgar import SECEdgarClient, FilingMetadata
 from whale_watcher.config import Config
 from whale_watcher.database.connection import DatabaseConnection
 from whale_watcher.database.models import Filer, Filing
+from whale_watcher.etl.analyzer import calculate_position_changes
 from whale_watcher.etl.loader import load_holdings, update_filing_summary
 from whale_watcher.etl.parser import parse_13f_info_table
 from whale_watcher.utils.logger import get_logger
@@ -253,7 +254,13 @@ def download_and_store_filing_metadata(
             # Update summary
             update_filing_summary(session, filing_id, summary)
 
-            logger.info(f"Stored filing {filing.accession_number} with {len(holdings)} holdings")
+            # Calculate position changes (Phase 5)
+            position_changes_count = calculate_position_changes(session, filing_id)
+
+            logger.info(
+                f"Stored filing {filing.accession_number} with {len(holdings)} holdings "
+                f"and {position_changes_count} position changes"
+            )
 
         return filing_id
 
