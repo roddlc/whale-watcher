@@ -9,6 +9,8 @@ from whale_watcher.clients.sec_edgar import SECEdgarClient, FilingMetadata
 from whale_watcher.config import Config
 from whale_watcher.database.connection import DatabaseConnection
 from whale_watcher.database.models import Filer, Filing
+from whale_watcher.etl.loader import load_holdings, update_filing_summary
+from whale_watcher.etl.parser import parse_13f_info_table
 from whale_watcher.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -144,11 +146,14 @@ def download_and_store_filing_metadata(
     db: DatabaseConnection,
     save_xml_path: Optional[Union[str, Path]] = None
 ) -> int:
-    """Download filing XML and store metadata in database.
+    """Download filing XML, parse holdings, and store in database.
 
-    Phase 2: This function downloads the XML to verify it exists but does not
-    parse it yet. It only stores the filing metadata (accession number, dates).
-    Phase 3 will add XML parsing and holdings loading.
+    This function implements the complete ETL workflow:
+    1. Downloads primary XML document (for backward compatibility)
+    2. Downloads info table XML
+    3. Parses info table to extract holdings
+    4. Stores filing metadata, holdings, and summary in database
+    5. Marks filing as processed
 
     Args:
         cik: Central Index Key
@@ -167,7 +172,7 @@ def download_and_store_filing_metadata(
     client = SECEdgarClient(config)
 
     try:
-        # Download XML (for Phase 2, we validate it downloads but don't parse)
+        # Download primary XML (backward compatible - kept for save_xml_path)
         xml_content = client.download_filing_xml(
             cik,
             filing.accession_number,
@@ -186,30 +191,69 @@ def download_and_store_filing_metadata(
             xml_path.write_text(xml_content)
             logger.info(f"Saved XML to {xml_path}")
 
-        # Store metadata in database
-        with db.session_scope() as session:
-            filer = session.query(Filer).filter(Filer.cik == cik).first()
+        # Download info table XML
+        try:
+            info_table_xml = client.download_info_table_xml(cik, filing.accession_number)
+            logger.info(f"Downloaded info table XML ({len(info_table_xml)} bytes)")
+        except ValueError as e:
+            logger.warning(f"No info table found: {e}")
+            # Fall back to metadata-only (existing behavior)
+            with db.session_scope() as session:
+                filer = session.query(Filer).filter(Filer.cik == cik).first()
 
+                if filer is None:
+                    raise ValueError(f"Filer not found for CIK: {cik}")
+
+                filing_record = Filing(
+                    filer_id=filer.id,
+                    accession_number=filing.accession_number,
+                    filing_date=filing.filing_date,
+                    period_of_report=filing.report_date,
+                    processed=False
+                )
+
+                session.add(filing_record)
+                session.flush()
+
+                filing_id = filing_record.id
+                logger.info(
+                    f"Stored filing metadata only: {filing.accession_number} "
+                    f"(ID: {filing_id}, processed=False)"
+                )
+
+            return filing_id
+
+        # Parse info table
+        summary, holdings = parse_13f_info_table(info_table_xml)
+        logger.info(f"Parsed {summary.holdings_count} holdings, total ${summary.total_value:,}")
+
+        # Store everything in one transaction
+        with db.session_scope() as session:
+            # Get filer
+            filer = session.query(Filer).filter(Filer.cik == cik).first()
             if filer is None:
                 raise ValueError(f"Filer not found for CIK: {cik}")
 
-            # Create Filing record (metadata only - Phase 2)
+            # Create Filing record
             filing_record = Filing(
                 filer_id=filer.id,
                 accession_number=filing.accession_number,
                 filing_date=filing.filing_date,
                 period_of_report=filing.report_date,
-                processed=False  # Will be True after Phase 3 (XML parsing)
+                processed=False
             )
-
             session.add(filing_record)
             session.flush()
 
             filing_id = filing_record.id
-            logger.info(
-                f"Stored filing metadata: {filing.accession_number} "
-                f"(ID: {filing_id})"
-            )
+
+            # Load holdings
+            load_holdings(session, filing_id, holdings)
+
+            # Update summary
+            update_filing_summary(session, filing_id, summary)
+
+            logger.info(f"Stored filing {filing.accession_number} with {len(holdings)} holdings")
 
         return filing_id
 
