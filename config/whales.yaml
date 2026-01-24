@@ -22,7 +22,7 @@ whales:
     enabled: true
 
   - name: "ARK Invest"
-    cik: "0001579982"
+    cik: "0001697748"
     description: "Cathie Wood's innovation-focused fund"
     category: "growth_investing"
     enabled: true
