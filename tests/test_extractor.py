@@ -360,12 +360,14 @@ class TestExtractNewFilings:
 class TestDownloadAndStoreFilingMetadata:
     """Test download_and_store_filing_metadata function."""
 
+    @patch('whale_watcher.etl.extractor.calculate_position_changes')
     @patch('whale_watcher.etl.extractor.parse_13f_info_table')
     @patch('whale_watcher.etl.extractor.SECEdgarClient')
     def test_downloads_xml_and_stores_metadata(
         self,
         mock_client_class: Mock,
         mock_parse: Mock,
+        mock_analyzer: Mock,
         mock_config: Mock,
         mock_db: Mock
     ) -> None:
@@ -391,6 +393,9 @@ class TestDownloadAndStoreFilingMetadata:
             )
         ]
         mock_parse.return_value = (mock_summary, mock_holdings)
+
+        # Mock analyzer (Phase 5)
+        mock_analyzer.return_value = 1  # 1 position change created
 
         # Mock database
         mock_session = Mock()
@@ -439,12 +444,14 @@ class TestDownloadAndStoreFilingMetadata:
         assert mock_session.flush.called
         mock_client.close.assert_called_once()
 
+    @patch('whale_watcher.etl.extractor.calculate_position_changes')
     @patch('whale_watcher.etl.extractor.parse_13f_info_table')
     @patch('whale_watcher.etl.extractor.SECEdgarClient')
     def test_raises_error_if_filer_not_found(
         self,
         mock_client_class: Mock,
         mock_parse: Mock,
+        mock_analyzer: Mock,
         mock_config: Mock,
         mock_db: Mock
     ) -> None:
@@ -493,12 +500,14 @@ class TestDownloadAndStoreFilingMetadata:
                 db=mock_db
             )
 
+    @patch('whale_watcher.etl.extractor.calculate_position_changes')
     @patch('whale_watcher.etl.extractor.parse_13f_info_table')
     @patch('whale_watcher.etl.extractor.SECEdgarClient')
     def test_creates_filing_with_correct_fields(
         self,
         mock_client_class: Mock,
         mock_parse: Mock,
+        mock_analyzer: Mock,
         mock_config: Mock,
         db_connection
     ) -> None:
@@ -545,6 +554,9 @@ class TestDownloadAndStoreFilingMetadata:
             )
         ]
         mock_parse.return_value = (mock_summary, mock_holdings)
+
+        # Mock analyzer (Phase 5)
+        mock_analyzer.return_value = 2  # 2 position changes created
 
         filing_metadata = FilingMetadata(
             accession_number="0001067983-25-000005",
