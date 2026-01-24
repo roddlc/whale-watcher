@@ -140,7 +140,7 @@ class Holding(Base, TimestampMixin):
     market_value: Mapped[int] = mapped_column(
         BigInteger,
         nullable=False,
-        comment="Market value in thousands of dollars"
+        comment="Market value in dollars"
     )
     voting_authority_sole: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     voting_authority_shared: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
@@ -184,7 +184,7 @@ class PositionChange(Base, TimestampMixin):
     prev_market_value: Mapped[Optional[int]] = mapped_column(
         BigInteger,
         nullable=True,
-        comment="Market value in thousands of dollars"
+        comment="Market value in dollars"
     )
 
     # Current quarter data
@@ -198,7 +198,7 @@ class PositionChange(Base, TimestampMixin):
     curr_market_value: Mapped[Optional[int]] = mapped_column(
         BigInteger,
         nullable=True,
-        comment="Market value in thousands of dollars"
+        comment="Market value in dollars"
     )
 
     # Calculated changes
