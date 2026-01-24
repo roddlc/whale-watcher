@@ -283,8 +283,9 @@ class SECEdgarClient:
     def find_info_table_document(self, cik: str, accession_number: str) -> Optional[str]:
         """Find the information table XML document in a filing.
 
-        Searches for common info table filenames like "form13fInfoTable.xml",
-        "infotable.xml", etc.
+        Parses the filing -index.html page to find documents with
+        Type="INFORMATION TABLE" as labeled by SEC. This is more reliable
+        than filename pattern matching since SEC doesn't enforce naming conventions.
 
         Args:
             cik: Central Index Key
@@ -293,25 +294,73 @@ class SECEdgarClient:
         Returns:
             Info table filename if found, None otherwise
         """
-        documents = self.get_filing_documents(cik, accession_number)
+        # Remove dashes from accession number and leading zeros from CIK
+        accession_no_dashes = accession_number.replace('-', '')
+        cik_no_leading_zeros = cik.lstrip('0')
 
-        # Common patterns for 13F info table documents
-        info_table_patterns = [
-            r'form13finfotable\.xml',
-            r'infotable\.xml',
-            r'information[_\-]?table\.xml',
-            r'13f[_\-]?info[_\-]?table\.xml',
-        ]
+        # Construct URL to -index.html file (contains document table with Type column)
+        url = (
+            f"{self.ARCHIVES_BASE}/{cik_no_leading_zeros}/"
+            f"{accession_no_dashes}/{accession_number}-index.html"
+        )
 
-        for doc in documents:
-            doc_lower = doc.lower()
-            for pattern in info_table_patterns:
-                if re.search(pattern, doc_lower):
-                    self.logger.debug(f"Found info table document: {doc}")
-                    return doc
+        self._rate_limit()
+        self.logger.debug(f"Fetching filing index to find info table: {url}")
 
-        self.logger.warning(f"No info table document found for {accession_number}")
-        return None
+        try:
+            response = self.session.get(url, timeout=30)
+            response.raise_for_status()
+
+            # Parse HTML table to find document with Type="INFORMATION TABLE"
+            # Table structure: <tr>...<td>Document</td>...<td>Type</td>...</tr>
+            # We need to extract the document filename from rows where Type contains "INFORMATION TABLE"
+
+            # Pattern to match table rows and extract cells
+            # This regex finds <tr> tags and captures content between <td> tags
+            table_row_pattern = r'<tr[^>]*>(.*?)</tr>'
+            cell_pattern = r'<td[^>]*>(.*?)</td>'
+
+            info_table_candidates = []
+
+            for row_match in re.finditer(table_row_pattern, response.text, re.IGNORECASE | re.DOTALL):
+                row_html = row_match.group(1)
+                cells = re.findall(cell_pattern, row_html, re.IGNORECASE | re.DOTALL)
+
+                # Skip rows without enough cells (header rows, etc.)
+                if len(cells) < 4:
+                    continue
+
+                # Typical structure: [Seq, Description, Document, Type, Size]
+                # Document is usually 3rd column (index 2), Type is 4th (index 3)
+                # Extract filename from href in Document column
+                doc_cell = cells[2] if len(cells) > 2 else ""
+                type_cell = cells[3] if len(cells) > 3 else ""
+
+                # Check if Type column contains "INFORMATION TABLE"
+                if "INFORMATION TABLE" in type_cell.upper():
+                    # Extract filename from href in document cell
+                    href_pattern = r'href="([^"]+)"'
+                    href_match = re.search(href_pattern, doc_cell)
+                    if href_match:
+                        filename = href_match.group(1).split('/')[-1]  # Get filename without path
+                        info_table_candidates.append(filename)
+                        self.logger.debug(f"Found INFORMATION TABLE document: {filename}")
+
+            # Prefer .xml over .html if multiple candidates
+            xml_candidates = [f for f in info_table_candidates if f.lower().endswith('.xml')]
+            if xml_candidates:
+                self.logger.info(f"Found info table: {xml_candidates[0]}")
+                return xml_candidates[0]
+            elif info_table_candidates:
+                self.logger.info(f"Found info table: {info_table_candidates[0]}")
+                return info_table_candidates[0]
+
+            self.logger.warning(f"No info table document found for {accession_number}")
+            return None
+
+        except requests.HTTPError as e:
+            self.logger.error(f"HTTP error fetching index for {accession_number}: {e}")
+            raise
 
     def download_info_table_xml(self, cik: str, accession_number: str) -> str:
         """Download the information table XML for a 13F filing.
