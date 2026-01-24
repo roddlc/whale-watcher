@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from whale_watcher.database.models import Filer, Filing
+from whale_watcher.database.models import Filer, Filing, Holding
 from whale_watcher.etl.extractor import (
     get_existing_accession_numbers,
     get_or_create_filer,
@@ -360,10 +360,12 @@ class TestExtractNewFilings:
 class TestDownloadAndStoreFilingMetadata:
     """Test download_and_store_filing_metadata function."""
 
+    @patch('whale_watcher.etl.extractor.parse_13f_info_table')
     @patch('whale_watcher.etl.extractor.SECEdgarClient')
     def test_downloads_xml_and_stores_metadata(
         self,
         mock_client_class: Mock,
+        mock_parse: Mock,
         mock_config: Mock,
         mock_db: Mock
     ) -> None:
@@ -371,7 +373,24 @@ class TestDownloadAndStoreFilingMetadata:
         # Mock SEC client
         mock_client = Mock()
         mock_client.download_filing_xml.return_value = "<xml>Test Filing</xml>"
+        mock_client.download_info_table_xml.return_value = "<xml>Info Table</xml>"
         mock_client_class.return_value = mock_client
+
+        # Mock parser
+        from whale_watcher.etl.parser import FilingSummary, HoldingData
+        mock_summary = FilingSummary(total_value=100000, holdings_count=1)
+        mock_holdings = [
+            HoldingData(
+                cusip="037833100",
+                security_name="APPLE INC",
+                shares=1000,
+                market_value=100000,
+                voting_authority_sole=1000,
+                voting_authority_shared=0,
+                voting_authority_none=0
+            )
+        ]
+        mock_parse.return_value = (mock_summary, mock_holdings)
 
         # Mock database
         mock_session = Mock()
@@ -409,15 +428,23 @@ class TestDownloadAndStoreFilingMetadata:
             "form13fInfoTable.xml"
         )
 
+        # Verify info table was downloaded
+        mock_client.download_info_table_xml.assert_called_once_with(
+            "0001067983",
+            "0001067983-25-000005"
+        )
+
         # Verify filing was added to session
         assert mock_session.add.called
         assert mock_session.flush.called
         mock_client.close.assert_called_once()
 
+    @patch('whale_watcher.etl.extractor.parse_13f_info_table')
     @patch('whale_watcher.etl.extractor.SECEdgarClient')
     def test_raises_error_if_filer_not_found(
         self,
         mock_client_class: Mock,
+        mock_parse: Mock,
         mock_config: Mock,
         mock_db: Mock
     ) -> None:
@@ -425,7 +452,24 @@ class TestDownloadAndStoreFilingMetadata:
         # Mock SEC client
         mock_client = Mock()
         mock_client.download_filing_xml.return_value = "<xml>Test</xml>"
+        mock_client.download_info_table_xml.return_value = "<xml>Info Table</xml>"
         mock_client_class.return_value = mock_client
+
+        # Mock parser
+        from whale_watcher.etl.parser import FilingSummary, HoldingData
+        mock_summary = FilingSummary(total_value=100000, holdings_count=1)
+        mock_holdings = [
+            HoldingData(
+                cusip="037833100",
+                security_name="APPLE INC",
+                shares=1000,
+                market_value=100000,
+                voting_authority_sole=1000,
+                voting_authority_shared=0,
+                voting_authority_none=0
+            )
+        ]
+        mock_parse.return_value = (mock_summary, mock_holdings)
 
         # Mock database - filer not found
         mock_session = Mock()
@@ -449,10 +493,12 @@ class TestDownloadAndStoreFilingMetadata:
                 db=mock_db
             )
 
+    @patch('whale_watcher.etl.extractor.parse_13f_info_table')
     @patch('whale_watcher.etl.extractor.SECEdgarClient')
     def test_creates_filing_with_correct_fields(
         self,
         mock_client_class: Mock,
+        mock_parse: Mock,
         mock_config: Mock,
         db_connection
     ) -> None:
@@ -472,7 +518,33 @@ class TestDownloadAndStoreFilingMetadata:
         # Mock SEC client
         mock_client = Mock()
         mock_client.download_filing_xml.return_value = "<xml>Test Filing</xml>"
+        mock_client.download_info_table_xml.return_value = "<xml>Info Table</xml>"
         mock_client_class.return_value = mock_client
+
+        # Mock parser
+        from whale_watcher.etl.parser import FilingSummary, HoldingData
+        mock_summary = FilingSummary(total_value=100000, holdings_count=2)
+        mock_holdings = [
+            HoldingData(
+                cusip="037833100",
+                security_name="APPLE INC",
+                shares=1000,
+                market_value=50000,
+                voting_authority_sole=1000,
+                voting_authority_shared=0,
+                voting_authority_none=0
+            ),
+            HoldingData(
+                cusip="594918104",
+                security_name="MICROSOFT CORP",
+                shares=500,
+                market_value=50000,
+                voting_authority_sole=500,
+                voting_authority_shared=0,
+                voting_authority_none=0
+            )
+        ]
+        mock_parse.return_value = (mock_summary, mock_holdings)
 
         filing_metadata = FilingMetadata(
             accession_number="0001067983-25-000005",
@@ -490,7 +562,7 @@ class TestDownloadAndStoreFilingMetadata:
             db=db_connection
         )
 
-        # Verify filing was created correctly
+        # Verify filing was created correctly with Phase 4 updates
         with db_connection.session_scope() as session:
             filing = session.query(Filing).filter(Filing.id == filing_id).first()
             assert filing is not None
@@ -498,9 +570,13 @@ class TestDownloadAndStoreFilingMetadata:
             assert filing.accession_number == "0001067983-25-000005"
             assert filing.filing_date == date(2025, 2, 14)
             assert filing.period_of_report == date(2024, 12, 31)
-            assert filing.processed is False
-            assert filing.total_value is None  # Phase 2: not set yet
-            assert filing.holdings_count is None  # Phase 2: not set yet
+            assert filing.processed is True  # Phase 4: now set to True
+            assert filing.total_value == 100000  # Phase 4: now populated
+            assert filing.holdings_count == 2  # Phase 4: now populated
+
+            # Verify holdings were loaded
+            holdings = session.query(Holding).filter(Holding.filing_id == filing_id).all()
+            assert len(holdings) == 2
 
 
 @pytest.fixture
